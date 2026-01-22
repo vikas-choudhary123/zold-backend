@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/prisma"
@@ -13,6 +7,229 @@ datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                String            @id @default(uuid())
+  name              String
+  username          String            @unique
+  email             String            @unique
+  password          String
+  role              Role              @default(USER)
+  isVerified        Boolean           @default(false)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  otp               String?
+  otpExpiry         DateTime?
+  phone             String?
+  riskLevel         String            @default("LOW")
+  dataSharing       Boolean           @default(false)
+  profileVisibility String            @default("contacts")
+  readReceipts      Boolean           @default(true)
+  twoFactorEnabled  Boolean           @default(false)
+  adminRole         AdminRoleType?
+  bankAccounts      BankAccount[]
+  goldTransactions  GoldTransaction[]
+  kyc               Kyc?
+  partner           Partner?
+  paymentMethods    PaymentMethod[]
+  savedAddresses    SavedAddress[]
+  testWallet        TestWallet?
+  sessions          UserSession[]
+  wallet            Wallet?
+}
+
+model Wallet {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  goldBalance  Float    @default(0)
+  rupeeBalance Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  pledgedGold  Float    @default(0)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Kyc {
+  id              String        @id @default(uuid())
+  userId          String        @unique
+  status          KycStatus     @default(PENDING)
+  panNumber       String?
+  aadhaarNumber   String?
+  bankName        String?
+  accountNumber   String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  rejectionReason String?
+  verifiedAt      DateTime?
+  verifiedBy      String?
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents       KycDocument[]
+}
+
+model TestWallet {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  virtualBalance Decimal  @default(10000) @db.Decimal(10, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GoldTransaction {
+  id           String   @id @default(uuid())
+  userId       String
+  type         String
+  goldGrams    Float
+  ratePerGram  Decimal  @db.Decimal(10, 2)
+  totalAmount  Decimal  @db.Decimal(10, 2)
+  gst          Decimal  @db.Decimal(10, 2)
+  finalAmount  Decimal  @db.Decimal(10, 2)
+  paymentMode  String
+  status       String   @default("COMPLETED")
+  storageType  String
+  createdAt    DateTime @default(now())
+  purchaseRate Decimal? @db.Decimal(10, 2)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GoldRate {
+  id        String   @id @default(uuid())
+  buyRate   Decimal  @db.Decimal(10, 2)
+  sellRate  Decimal  @db.Decimal(10, 2)
+  isActive  Boolean  @default(true)
+  createdBy String?
+  createdAt DateTime @default(now())
+  margin    Float    @default(0)
+  source    String   @default("MANUAL")
+  spread    Float    @default(0)
+
+  @@index([isActive, createdAt])
+}
+
+model BankAccount {
+  id                String   @id @default(uuid())
+  userId            String
+  accountHolderName String
+  bankName          String
+  accountNumber     String
+  ifscCode          String
+  accountType       String
+  branch            String?
+  isPrimary         Boolean  @default(false)
+  isVerified        Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, accountNumber])
+  @@index([userId])
+}
+
+model PaymentMethod {
+  id            String   @id @default(uuid())
+  userId        String
+  type          String
+  provider      String?
+  upiId         String?
+  cardLast4     String?
+  cardNetwork   String?
+  expiryMonth   Int?
+  expiryYear    Int?
+  bankAccountId String?
+  isPrimary     Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model SavedAddress {
+  id           String   @id @default(uuid())
+  userId       String
+  label        String
+  fullName     String
+  phone        String
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  state        String
+  pincode      String
+  country      String   @default("India")
+  isPrimary    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model UserSession {
+  id           String   @id @default(uuid())
+  userId       String
+  deviceName   String
+  deviceType   String
+  browser      String?
+  os           String?
+  ipAddress    String?
+  location     String?
+  userAgent    String?
+  token        String   @unique
+  isActive     Boolean  @default(true)
+  lastActivity DateTime @default(now())
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+model KycDocument {
+  id           String   @id @default(uuid())
+  kycId        String
+  documentType String
+  documentUrl  String
+  uploadedAt   DateTime @default(now())
+  kyc          Kyc      @relation(fields: [kycId], references: [id], onDelete: Cascade)
+
+  @@index([kycId])
+}
+
+model Partner {
+  id          String    @id @default(uuid())
+  name        String
+  area        String
+  city        String
+  state       String    @default("Chhattisgarh")
+  country     String    @default("India")
+  latitude    Float
+  longitude   Float
+  distance    Float     @default(0)
+  phone       String
+  email       String?
+  website     String?
+  rating      Float     @default(0)
+  reviews     Int       @default(0)
+  timings     String
+  services    String
+  offers      String    @default("[]")
+  description String?
+  isActive    Boolean   @default(true)
+  isVerified  Boolean   @default(false)
+  verifiedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  bankAccount String?
+  commission  Float     @default(0)
+  userId      String?   @unique
+  user        User?     @relation(fields: [userId], references: [id])
+
+  @@index([city])
+  @@index([isActive])
+  @@index([userId])
 }
 
 enum Role {
@@ -33,268 +250,4 @@ enum KycStatus {
   PENDING
   APPROVED
   REJECTED
-}
-
-model User {
-  id         String         @id @default(uuid())
-  name       String
-  username   String         @unique
-  email      String         @unique
-  password   String
-  phone      String?
-  role       Role           @default(USER)
-  adminRole  AdminRoleType? // Only for ADMIN users
-  riskLevel  String         @default("LOW")
-  isVerified Boolean        @default(false)
-  otp        String?
-  otpExpiry  DateTime?
-
-  // Security & Privacy Settings
-  twoFactorEnabled  Boolean @default(false)
-  readReceipts      Boolean @default(true)
-  dataSharing       Boolean @default(false)
-  profileVisibility String  @default("contacts") // 'public' | 'contacts' | 'none'
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  wallet           Wallet?
-  kyc              Kyc?
-  testWallet       TestWallet?
-  goldTransactions GoldTransaction[]
-  bankAccounts     BankAccount[]
-  paymentMethods   PaymentMethod[]
-  savedAddresses   SavedAddress[]
-  sessions         UserSession[]
-  partner          Partner? // If user is a partner
-}
-
-model Wallet {
-  id           String  @id @default(uuid())
-  userId       String  @unique
-  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  goldBalance  Float   @default(0)
-  pledgedGold  Float   @default(0) // Gold pledged in loans
-  rupeeBalance Decimal @default(0) @db.Decimal(10, 2)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Kyc {
-  id            String    @id @default(uuid())
-  userId        String    @unique
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status        KycStatus @default(PENDING)
-  panNumber     String?
-  aadhaarNumber String?
-  bankName      String?
-  accountNumber String?
-
-  verifiedBy      String?
-  verifiedAt      DateTime?
-  rejectionReason String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  documents KycDocument[]
-}
-
-model TestWallet {
-  id             String  @id @default(uuid())
-  userId         String  @unique
-  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  virtualBalance Decimal @default(10000) @db.Decimal(10, 2)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model GoldTransaction {
-  id          String  @id @default(uuid())
-  userId      String
-  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        String // 'BUY' or 'SELL'
-  goldGrams   Float
-  ratePerGram Decimal @db.Decimal(10, 2)
-  totalAmount Decimal @db.Decimal(10, 2)
-  gst         Decimal @db.Decimal(10, 2)
-  finalAmount Decimal @db.Decimal(10, 2)
-  paymentMode String // 'TEST_WALLET', 'UPI', 'CARD', etc.
-  status      String  @default("COMPLETED")
-  storageType String // 'vault' or 'partner'
-
-  // P&L tracking fields
-  purchaseRate Decimal? @db.Decimal(10, 2) // Rate at purchase (for P&L)
-
-  createdAt DateTime @default(now())
-}
-
-model GoldRate {
-  id        String  @id @default(uuid())
-  buyRate   Decimal @db.Decimal(10, 2)
-  sellRate  Decimal @db.Decimal(10, 2)
-  spread    Float   @default(0) // Buy-sell spread %
-  margin    Float   @default(0) // Profit margin %
-  source    String  @default("MANUAL") // MANUAL or API
-  isActive  Boolean @default(true)
-  createdBy String?
-
-  createdAt DateTime @default(now())
-
-  @@index([isActive, createdAt])
-}
-
-model BankAccount {
-  id     String @id @default(uuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  accountHolderName String
-  bankName          String
-  accountNumber     String
-  ifscCode          String
-  accountType       String // 'SAVINGS' | 'CURRENT'
-  branch            String?
-
-  isPrimary  Boolean @default(false)
-  isVerified Boolean @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([userId, accountNumber])
-  @@index([userId])
-}
-
-model PaymentMethod {
-  id     String @id @default(uuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  type     String // 'UPI' | 'CARD' | 'NETBANKING'
-  provider String? // 'Razorpay', 'Paytm', etc.
-
-  // For UPI
-  upiId String?
-
-  // For Cards
-  cardLast4   String?
-  cardNetwork String? // 'VISA', 'MASTERCARD', etc.
-  expiryMonth Int?
-  expiryYear  Int?
-
-  // For Net Banking
-  bankAccountId String?
-
-  isPrimary Boolean @default(false)
-  isActive  Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-}
-
-model SavedAddress {
-  id     String @id @default(uuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  label        String // 'Home', 'Work', 'Other'
-  fullName     String
-  phone        String
-  addressLine1 String
-  addressLine2 String?
-  city         String
-  state        String
-  pincode      String
-  country      String  @default("India")
-
-  isPrimary Boolean @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-}
-
-model UserSession {
-  id     String @id @default(uuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  deviceName String // 'iPhone 14 Pro', 'Chrome Browser', etc.
-  deviceType String // 'mobile', 'desktop', 'tablet'
-  browser    String? // 'Chrome', 'Safari', 'Firefox'
-  os         String? // 'iOS', 'Android', 'Windows', 'Mac'
-  ipAddress  String?
-  location   String? // 'Mumbai, India'
-  userAgent  String?
-
-  token        String   @unique
-  isActive     Boolean  @default(true)
-  lastActivity DateTime @default(now())
-
-  createdAt DateTime @default(now())
-  expiresAt DateTime
-
-  @@index([userId])
-  @@index([token])
-}
-
-model KycDocument {
-  id    String @id @default(uuid())
-  kycId String
-  kyc   Kyc    @relation(fields: [kycId], references: [id], onDelete: Cascade)
-
-  documentType String // 'AADHAAR_FRONT', 'AADHAAR_BACK', 'PAN', 'ADDRESS_PROOF'
-  documentUrl  String // URL to uploaded file
-  uploadedAt   DateTime @default(now())
-
-  @@index([kycId])
-}
-
-model Partner {
-  id        String @id @default(uuid())
-  name      String
-  area      String
-  city      String
-  state     String @default("Chhattisgarh")
-  country   String @default("India")
-  latitude  Float
-  longitude Float
-  distance  Float  @default(0) // Distance in km from reference point
-
-  // Contact Information
-  phone   String
-  email   String?
-  website String?
-
-  // Business Details
-  rating      Float   @default(0)
-  reviews     Int     @default(0)
-  timings     String // e.g., "10:00 AM - 6:00 PM"
-  services    String // JSON array as string, e.g., ["pickup", "jewellery", "loan"]
-  offers      String  @default("[]") // JSON array as string
-  description String?
-
-  // Partner account linkage
-  userId      String? @unique // Link to User account
-  user        User?   @relation(fields: [userId], references: [id])
-  commission  Float   @default(0) // % commission on conversions
-  bankAccount String? // For settlements
-
-  // Status
-  isActive   Boolean   @default(true)
-  isVerified Boolean   @default(false)
-  verifiedAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([city])
-  @@index([isActive])
-  @@index([userId])
 }
