@@ -182,6 +182,47 @@ const buyGold = async (req, res) => {
 };
 
 /**
+ * Sell gold
+ */
+const sellGold = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { goldGrams } = req.body;
+    
+    if (!goldGrams) {
+      return res.status(400).json({
+        success: false,
+        message: 'Gold grams is required'
+      });
+    }
+
+    if (parseFloat(goldGrams) <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Gold grams must be greater than 0'
+      });
+    }
+    
+    const result = await goldService.sellGold(userId, {
+      goldGrams
+    });
+    
+    res.json({
+      success: true,
+      message: `Successfully sold ${goldGrams} grams of gold`,
+      data: result
+    });
+  } catch (error) {
+    console.error('Error selling gold:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to sell gold',
+      error: error.message
+    });
+  }
+};
+
+/**
  * Get user's transaction history
  */
 const getTransactionHistory = async (req, res) => {
@@ -279,6 +320,7 @@ module.exports = {
   updateGoldRate,
   getGoldRateHistory,
   buyGold,
+  sellGold,
   getTransactionHistory,
   getAllTransactionHistory,
   getUserWalletBalance,

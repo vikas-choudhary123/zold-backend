@@ -16,6 +16,9 @@ router.get('/rates/history', authMiddleware, goldController.getGoldRateHistory);
 // Buy Gold Routes  
 router.post('/buy', authMiddleware, goldController.buyGold);
 
+// Sell Gold Routes
+router.post('/sell', authMiddleware, goldController.sellGold);
+
 // Transaction History Routes
 router.get('/transactions', authMiddleware, goldController.getTransactionHistory);
 router.get('/transactions/all', authMiddleware, roleMiddleware('ADMIN'), goldController.getAllTransactionHistory);

@@ -2,10 +2,10 @@ const { PrismaClient } = require('../generated/prisma');
 const prisma = new PrismaClient();
 
 /**
- * Get all payment methods for a user
+ * Get all payment methods for a user (including bank accounts and UPI)
  */
 const getUserPaymentMethods = async (userId) => {
-  const methods = await prisma.paymentMethod.findMany({
+  const paymentMethods = await prisma.paymentMethod.findMany({
     where: { userId },
     orderBy: [
       { isPrimary: 'desc' },
@@ -13,7 +13,18 @@ const getUserPaymentMethods = async (userId) => {
     ]
   });
 
-  return methods;
+  const bankAccounts = await prisma.bankAccount.findMany({
+    where: { userId },
+    orderBy: [
+      { isPrimary: 'desc' },
+      { createdAt: 'desc' }
+    ]
+  });
+
+  return {
+    paymentMethods,
+    bankAccounts
+  };
 };
 
 /**

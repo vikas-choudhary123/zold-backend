@@ -1,5 +1,6 @@
 const { PrismaClient } = require('../generated/prisma');
 const prisma = new PrismaClient();
+const { getLiveGoldPrice } = require('./goldApiService');
 
 /**
  * Get or create test wallet for user
@@ -57,24 +58,53 @@ const resetTestWallet = async (userId) => {
 
 /**
  * Get current active gold rate
+ * Fetches live price from GoldAPI if available, otherwise uses database rates
  */
-const getCurrentGoldRate = async () => {
+const getCurrentGoldRate = async (useLivePrice = true) => {
+  // Try to fetch live price from GoldAPI
+  if (useLivePrice) {
+    try {
+      const livePrice = await getLiveGoldPrice();
+      
+      // Only use API price if it's valid (not 0 and source is goldapi)
+      if (livePrice.source === 'goldapi' && livePrice.buyRate > 0) {
+        console.log('Using live gold price:', livePrice.buyRate);
+        
+        // Update database with latest rate
+        await prisma.goldRate.updateMany({
+          where: { isActive: true },
+          data: { isActive: false }
+        });
+
+        const newRate = await prisma.goldRate.create({
+          data: {
+            buyRate: livePrice.buyRate,
+            sellRate: livePrice.sellRate,
+            isActive: true
+          }
+        });
+
+        return newRate;
+      } else {
+        console.log('API not available or returned 0:', livePrice.source, livePrice.error || '');
+      }
+    } catch (error) {
+      console.error('Error fetching live gold price:', error.message);
+    }
+  }
+
+  // Fallback to database rate
   let goldRate = await prisma.goldRate.findFirst({
     where: { isActive: true },
     orderBy: { createdAt: 'desc' }
   });
 
-  // If no rate exists, create a default one
+  // If no rate exists in database, throw error - don't create dummy data
   if (!goldRate) {
-    goldRate = await prisma.goldRate.create({
-      data: {
-        buyRate: 6245.50,
-        sellRate: 6145.50,
-        isActive: true
-      }
-    });
+    throw new Error('No gold rate available. Please configure GOLD_API_KEY or add a rate manually.');
   }
 
+  console.log('Using database gold rate:', goldRate.buyRate);
   return goldRate;
 };
 
@@ -183,6 +213,91 @@ const buyGold = async (userId, data) => {
         paymentMode,
         status: 'COMPLETED',
         storageType: storageType || 'vault'
+      }
+    });
+
+    return {
+      transaction,
+      updatedWallet,
+      updatedTestWallet
+    };
+  });
+
+  return result;
+};
+
+/**
+ * Sell gold to platform (adds to test wallet)
+ */
+const sellGold = async (userId, data) => {
+  const { goldGrams } = data;
+
+  // Get current gold rate
+  const goldRate = await getCurrentGoldRate();
+
+  // Calculate amounts using sell rate
+  const totalAmount = parseFloat(goldGrams) * parseFloat(goldRate.sellRate);
+  const gst = totalAmount * 0.03; // 3% GST deducted
+  const finalAmount = totalAmount - gst;
+
+  // Check user's gold balance
+  const wallet = await prisma.wallet.findUnique({
+    where: { userId }
+  });
+
+  if (!wallet || parseFloat(wallet.goldBalance) < parseFloat(goldGrams)) {
+    throw new Error('Insufficient gold balance');
+  }
+
+  // Start transaction
+  const result = await prisma.$transaction(async (tx) => {
+    // Deduct gold from wallet
+    const updatedWallet = await tx.wallet.update({
+      where: { userId },
+      data: {
+        goldBalance: {
+          decrement: parseFloat(goldGrams)
+        }
+      }
+    });
+
+    // Add amount to test wallet
+    const testWallet = await tx.testWallet.findUnique({
+      where: { userId }
+    });
+
+    let updatedTestWallet;
+    if (testWallet) {
+      updatedTestWallet = await tx.testWallet.update({
+        where: { userId },
+        data: {
+          virtualBalance: {
+            increment: finalAmount
+          }
+        }
+      });
+    } else {
+      updatedTestWallet = await tx.testWallet.create({
+        data: {
+          userId,
+          virtualBalance: finalAmount
+        }
+      });
+    }
+
+    // Create transaction record
+    const transaction = await tx.goldTransaction.create({
+      data: {
+        userId,
+        type: 'SELL',
+        goldGrams: parseFloat(goldGrams),
+        ratePerGram: goldRate.sellRate,
+        totalAmount,
+        gst,
+        finalAmount,
+        paymentMode: 'TEST_WALLET',
+        status: 'COMPLETED',
+        storageType: 'vault'
       }
     });
 
@@ -334,6 +449,7 @@ module.exports = {
   updateGoldRate,
   getGoldRateHistory,
   buyGold,
+  sellGold,
   getTransactionHistory,
   getAllTransactionHistory,
   getUserWalletBalance,
